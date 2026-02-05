@@ -58,7 +58,9 @@ class CompletionRequest:
     """A request to complete a chat conversation."""
 
     model: str
-    messages: Messages
+    messages: Messages = {}
+    template: str | None = None
+    variables: dict[str, Any] | None = None
     temperature: float | None = None
     max_tokens: int | None = None
     max_completion_tokens: int | None = None
