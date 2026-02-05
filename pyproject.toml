@@ -1,0 +1,52 @@
+[project]
+name = "flashlite"
+version = "0.1.0"
+description = "Batteries-included wrapper for litellm with rate limiting, retries, templating, and more"
+readme = "README.md"
+authors = [
+    { name = "ndalton12", email = "niall.dalton12@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "litellm>=1.55.0",
+    "pydantic>=2.0",
+    "jinja2>=3.1.0",
+    "tenacity>=8.0.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=4.0.0",
+    "mypy>=1.0.0",
+    "ruff>=0.1.0",
+]
+evals = [
+    "inspect-ai>=0.3.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["UP047"]  # Allow TypeVar style generics
