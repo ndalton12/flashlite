@@ -175,6 +175,10 @@ class StructuredLogger:
 
         # Build parameters dict
         params: dict[str, Any] = {}
+        if request.template is not None:
+            params["template"] = request.template
+        if request.variables is not None:
+            params["variables"] = request.variables
         if request.temperature is not None:
             params["temperature"] = request.temperature
         if request.max_tokens is not None:

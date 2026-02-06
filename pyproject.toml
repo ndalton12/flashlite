@@ -1,6 +1,6 @@
 [project]
 name = "flashlite"
-version = "0.1.0"
+version = "0.2.0"
 description = "Batteries-included wrapper for litellm with rate limiting, retries, templating, and more"
 readme = "README.md"
 authors = [
@@ -35,7 +35,10 @@ build-backend = "hatchling.build"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
-addopts = "-v --tb=short"
+addopts = "-v --tb=short -m 'not slow'"
+markers = [
+    "slow: marks tests that may require real waiting (deselected by default, run with -m slow)",
+]
 
 [tool.mypy]
 python_version = "3.13"

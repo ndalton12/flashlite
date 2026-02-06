@@ -7,6 +7,7 @@ from typing import Any, TypeVar, overload
 
 from pydantic import BaseModel
 
+from ._spinner import Spinner
 from .cache import CacheBackend, MemoryCache
 from .config import FlashliteConfig, load_env_files
 from .conversation import ContextManager, Conversation
@@ -223,7 +224,8 @@ class Flashlite:
         if self._config.log_requests:
             logger.info(f"Completion request: model={request.model}")
 
-        response = await core_complete(request)
+        async with Spinner(f"Waiting for {request.model}...", delay=0.2):
+            response = await core_complete(request)
 
         if self._config.log_requests:
             logger.info(
@@ -395,10 +397,12 @@ class Flashlite:
             else:
                 extra_kwargs["tools"] = tools_to_openai(tools)
 
-        # Build request
+        # Build request (template/variables stored for middleware traceability)
         request = CompletionRequest(
             model=resolved_model,
             messages=final_messages,
+            template=template,
+            variables=variables,
             temperature=temperature,
             max_tokens=max_tokens,
             max_completion_tokens=max_completion_tokens,

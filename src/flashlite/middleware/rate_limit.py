@@ -5,6 +5,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 
+from .._spinner import Spinner
 from ..types import CompletionRequest, CompletionResponse, RateLimitConfig, RateLimitError
 from .base import CompletionHandler, Middleware
 
@@ -52,6 +53,18 @@ class TokenBucket:
         Raises:
             RateLimitError: If timeout exceeded
         """
+        # Clamp to capacity so a single oversized request can never deadlock.
+        # The request still pays the refill-wait cost for `capacity` tokens,
+        # which preserves rate-limiting backpressure.
+        effective = min(tokens, self.capacity)
+        if effective < tokens:
+            logger.warning(
+                "Requested %d tokens exceeds bucket capacity %d — "
+                "clamping to capacity to avoid deadlock",
+                int(tokens),
+                int(self.capacity),
+            )
+
         start_time = time.monotonic()
         deadline = start_time + timeout if timeout else None
 
@@ -59,12 +72,12 @@ class TokenBucket:
             while True:
                 self._refill()
 
-                if self.tokens >= tokens:
-                    self.tokens -= tokens
+                if self.tokens >= effective:
+                    self.tokens -= effective
                     return time.monotonic() - start_time
 
                 # Calculate wait time for enough tokens
-                tokens_needed = tokens - self.tokens
+                tokens_needed = effective - self.tokens
                 wait_time = tokens_needed / self.rate
 
                 # Check timeout
@@ -146,21 +159,31 @@ class RateLimitMiddleware(Middleware):
 
         # Acquire RPM token before making request
         if self._rpm_bucket:
-            wait_time = await self._rpm_bucket.acquire()
+            async with Spinner("Waiting on rate limit (RPM)...", delay=0.4):
+                wait_time = await self._rpm_bucket.acquire()
             if wait_time > 0.1:  # Only log significant waits
-                logger.debug(f"Rate limit: waited {wait_time:.2f}s for RPM token")
+                logger.info(
+                    "⏳ Rate limit backpressure: waited %.2fs for RPM capacity", wait_time
+                )
 
         # Make the request
         response = await next_handler(request)
 
         # For TPM limiting, consume tokens based on actual usage
-        # This is post-hoc - we can't know token count before the request
+        # This is post-hoc — we can't know token count before the request
         if self._tpm_bucket and response.usage:
             total_tokens = response.usage.total_tokens
             if total_tokens > 0:
-                # Don't block on TPM - just record the usage
                 # This creates backpressure for subsequent requests
-                await self._tpm_bucket.acquire(tokens=float(total_tokens))
+                async with Spinner("Waiting on rate limit (TPM)...", delay=0.4):
+                    wait_time = await self._tpm_bucket.acquire(tokens=float(total_tokens))
+                if wait_time > 0.1:
+                    logger.info(
+                        "⏳ Rate limit backpressure: waited %.2fs for TPM capacity "
+                        "(%d tokens used)",
+                        wait_time,
+                        total_tokens,
+                    )
 
         return response
 

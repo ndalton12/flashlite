@@ -354,11 +354,23 @@ class InspectLogger:
             sample_id = self._sample_count
             self._sample_count += 1
 
-        # Convert messages to Inspect format
-        input_messages = [
-            {"role": msg.get("role", "user"), "content": msg.get("content", "")}
-            for msg in request.messages
-        ]
+        # Convert messages to Inspect format (preserve name field for multi-agent)
+        input_messages = []
+        for msg in request.messages:
+            inspect_msg: dict[str, Any] = {
+                "role": msg.get("role", "user"),
+                "content": msg.get("content", ""),
+            }
+            if msg.get("name"):
+                inspect_msg["name"] = msg["name"]
+            input_messages.append(inspect_msg)
+
+        # Build metadata, including template info for traceability
+        entry_metadata = dict(metadata or {})
+        if request.template is not None:
+            entry_metadata["template"] = request.template
+        if request.variables is not None:
+            entry_metadata["variables"] = request.variables
 
         entry = InspectLogEntry(
             eval_id=self._eval_id,
@@ -373,7 +385,7 @@ class InspectLogger:
                 "total": response.usage.total_tokens if response.usage else 0,
             },
             timestamp=datetime.now(UTC).isoformat(),
-            metadata=metadata or {},
+            metadata=entry_metadata,
         )
 
         json_str = json.dumps(entry.to_dict())

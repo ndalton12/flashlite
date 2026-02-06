@@ -58,7 +58,7 @@ class CompletionRequest:
     """A request to complete a chat conversation."""
 
     model: str
-    messages: Messages = {}
+    messages: Messages = field(default_factory=list)
     template: str | None = None
     variables: dict[str, Any] | None = None
     temperature: float | None = None
