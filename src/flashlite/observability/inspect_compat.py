@@ -29,6 +29,7 @@ def convert_flashlite_logs_to_inspect(
     input_path: str | Path,
     output_path: str | Path | None = None,
     task_name: str | None = None,
+    strict_timestamps: bool = False,
 ) -> Path:
     """
     Convert flashlite JSONL logs to Inspect-compatible format.
@@ -40,6 +41,7 @@ def convert_flashlite_logs_to_inspect(
         input_path: Path to flashlite JSONL log file
         output_path: Output path for Inspect log file (defaults to same dir with proper naming)
         task_name: Task name for the evaluation (defaults to eval_id from logs)
+        strict_timestamps: If True, raise ValueError when timestamps are missing/invalid
 
     Returns:
         Path to the generated Inspect log file
@@ -66,6 +68,9 @@ def convert_flashlite_logs_to_inspect(
 
     if not entries:
         raise ValueError(f"No log entries found in {input_path}")
+
+    # If multiple runs were appended to the same JSONL, keep only the latest run.
+    entries = _select_latest_run(entries, strict_timestamps=strict_timestamps)
 
     # Extract metadata from first entry
     first_entry = entries[0]
@@ -108,6 +113,63 @@ def convert_flashlite_logs_to_inspect(
 
     logger.info(f"Converted {len(entries)} entries to Inspect format: {output_path}")
     return output_path
+
+
+def _select_latest_run(
+    entries: list[dict[str, Any]],
+    strict_timestamps: bool = False,
+) -> list[dict[str, Any]]:
+    """Select latest samples by timestamp, independent of file line ordering.
+
+    If multiple runs were appended (or interleaved) in one JSONL, this keeps only
+    the newest entry for each (sample_id, epoch) pair.
+    """
+    if not entries:
+        return entries
+
+    def _parse_timestamp(value: Any, *, index: int, entry: dict[str, Any]) -> datetime:
+        if not isinstance(value, str) or not value:
+            if strict_timestamps:
+                raise ValueError(
+                    "Missing timestamp in log entry "
+                    f"(line_index={index}, sample_id={entry.get('sample_id')}, epoch={entry.get('epoch')})"
+                )
+            return datetime.min.replace(tzinfo=UTC)
+        normalized = value.replace("Z", "+00:00")
+        try:
+            parsed = datetime.fromisoformat(normalized)
+        except ValueError:
+            if strict_timestamps:
+                raise ValueError(
+                    "Invalid timestamp in log entry "
+                    f"(line_index={index}, sample_id={entry.get('sample_id')}, epoch={entry.get('epoch')}, "
+                    f"timestamp={value!r})"
+                )
+            return datetime.min.replace(tzinfo=UTC)
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=UTC)
+        return parsed
+
+    latest_by_key: dict[tuple[Any, Any], dict[str, Any]] = {}
+    latest_ts_by_key: dict[tuple[Any, Any], datetime] = {}
+
+    for index, entry in enumerate(entries):
+        key = (entry.get("sample_id", 0), entry.get("epoch", 0))
+        entry_ts = _parse_timestamp(entry.get("timestamp"), index=index, entry=entry)
+        existing_ts = latest_ts_by_key.get(key)
+        if existing_ts is None or entry_ts > existing_ts:
+            latest_ts_by_key[key] = entry_ts
+            latest_by_key[key] = entry
+
+    selected = list(latest_by_key.values())
+    selected.sort(
+        key=lambda e: (
+            _parse_timestamp(e.get("timestamp"), index=-1, entry=e),
+            e.get("epoch", 0),
+            e.get("sample_id", 0),
+        )
+    )
+    return selected
 
 
 def _build_eval_log_dict(
@@ -205,9 +267,7 @@ def _build_eval_sample_dict(entry: dict[str, Any]) -> dict[str, Any]:
     model_name = entry.get("model", "unknown")
 
     # Build messages list (input + assistant response)
-    messages = list(input_messages) + [
-        {"role": "assistant", "content": entry.get("output", "")}
-    ]
+    messages = list(input_messages) + [{"role": "assistant", "content": entry.get("output", "")}]
 
     return {
         "id": entry.get("sample_id", 0),
@@ -309,6 +369,7 @@ class InspectLogger:
         log_dir: str | Path,
         eval_id: str | None = None,
         append: bool = True,
+        eval_prefix: str = "flashlite_eval",
     ):
         """
         Initialize the Inspect logger.
@@ -317,20 +378,43 @@ class InspectLogger:
             log_dir: Directory to write log files
             eval_id: Evaluation ID (auto-generated if not provided)
             append: Whether to append to existing log file
+            eval_prefix: Prefix for evaluation IDs
         """
         self._log_dir = Path(log_dir)
         self._log_dir.mkdir(parents=True, exist_ok=True)
 
-        self._eval_id = eval_id or self._generate_eval_id()
+        self._eval_id = eval_id or self._generate_eval_id(eval_prefix)
         self._log_file = self._log_dir / f"{self._eval_id}.jsonl"
         self._mode = "a" if append else "w"
-        self._file_handle = open(self._log_file, self._mode)
         self._sample_count = 0
+        if append and self._log_file.exists():
+            self._sample_count = self._count_existing_samples()
+        self._file_handle = open(self._log_file, self._mode)
 
-    def _generate_eval_id(self) -> str:
+    def _count_existing_samples(self) -> int:
+        """Count existing samples to avoid duplicate sample_ids when appending."""
+        max_sample_id = -1
+        try:
+            with open(self._log_file) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    sample_id = entry.get("sample_id")
+                    if isinstance(sample_id, int) and sample_id > max_sample_id:
+                        max_sample_id = sample_id
+        except FileNotFoundError:
+            return 0
+        return max_sample_id + 1
+
+    def _generate_eval_id(self, eval_prefix: str) -> str:
         """Generate a unique evaluation ID."""
         timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-        return f"flashlite_eval_{timestamp}"
+        return f"{eval_prefix}_{timestamp}"
 
     def log(
         self,

@@ -1,6 +1,6 @@
 [project]
 name = "flashlite"
-version = "0.2.0"
+version = "0.2.1"
 description = "Batteries-included wrapper for litellm with rate limiting, retries, templating, and more"
 readme = "README.md"
 authors = [

@@ -333,8 +333,7 @@ class MultiAgentChat:
         """
         if agent_name not in self._agents:
             raise ValueError(
-                f"Unknown agent: {agent_name}. "
-                f"Available agents: {list(self._agents.keys())}"
+                f"Unknown agent: {agent_name}. Available agents: {list(self._agents.keys())}"
             )
 
         agent = self._agents[agent_name]
@@ -372,12 +371,8 @@ class MultiAgentChat:
                 metadata={
                     "model": response.model,
                     "tokens": response.usage.total_tokens if response.usage else None,
-                    "input_tokens": (
-                        response.usage.input_tokens if response.usage else None
-                    ),
-                    "output_tokens": (
-                        response.usage.output_tokens if response.usage else None
-                    ),
+                    "input_tokens": (response.usage.input_tokens if response.usage else None),
+                    "output_tokens": (response.usage.output_tokens if response.usage else None),
                     "latency_ms": round(latency_ms, 1),
                 },
                 visible_to=visible_to,
@@ -395,7 +390,7 @@ class MultiAgentChat:
 
         # Validate structured output if requested
         if response_model is not None:
-            return self._validate_structured(
+            return await self._validate_structured(
                 response=response,
                 response_model=response_model,
                 messages=messages,
@@ -432,8 +427,7 @@ class MultiAgentChat:
         if "response_format" not in extra_kwargs:
             resolved_model = (agent.model or self._default_model or "").lower()
             if any(
-                p in resolved_model
-                for p in ["gpt-4", "gpt-3.5", "claude", "gemini", "mistral"]
+                p in resolved_model for p in ["gpt-4", "gpt-3.5", "claude", "gemini", "mistral"]
             ):
                 extra_kwargs["response_format"] = {"type": "json_object"}
 
@@ -537,14 +531,10 @@ class MultiAgentChat:
 
             if msg.agent_name == agent.name:
                 # Agent's own previous messages
-                messages.append(
-                    assistant_message(msg.content, name=_sanitize_name(agent.name))
-                )
+                messages.append(assistant_message(msg.content, name=_sanitize_name(agent.name)))
             else:
                 # Other agents'/sources' messages with name attribution
-                messages.append(
-                    user_message(msg.content, name=_sanitize_name(msg.agent_name))
-                )
+                messages.append(user_message(msg.content, name=_sanitize_name(msg.agent_name)))
 
         return messages
 
@@ -697,9 +687,7 @@ class MultiAgentChat:
             for line in msg.content.split("\n"):
                 lines.append(f"  {line}")
             if include_metadata and msg.metadata:
-                meta_str = ", ".join(
-                    f"{k}={v}" for k, v in msg.metadata.items() if v is not None
-                )
+                meta_str = ", ".join(f"{k}={v}" for k, v in msg.metadata.items() if v is not None)
                 if meta_str:
                     lines.append(f"  ({meta_str})")
             lines.append("")
@@ -739,6 +727,5 @@ class MultiAgentChat:
 
     def __repr__(self) -> str:
         return (
-            f"MultiAgentChat(agents={list(self._agents.keys())}, "
-            f"messages={len(self._transcript)})"
+            f"MultiAgentChat(agents={list(self._agents.keys())}, messages={len(self._transcript)})"
         )
