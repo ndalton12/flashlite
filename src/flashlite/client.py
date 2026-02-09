@@ -73,7 +73,7 @@ class Flashlite:
         template_dir: str | Path | None = None,
         # Logging & Observability
         log_requests: bool = False,
-        log_level: str = "INFO",
+        log_level: str = "WARNING",
         structured_logger: StructuredLogger | None = None,
         # Cost tracking
         track_costs: bool = False,
@@ -207,10 +207,7 @@ class Flashlite:
             )
 
         # Rate limiting middleware (innermost - rate limiting is per-request)
-        if (
-            self._config.rate_limit.requests_per_minute
-            or self._config.rate_limit.tokens_per_minute
-        ):
+        if self._config.rate_limit.requests_per_minute or self._config.rate_limit.tokens_per_minute:
             middleware.append(RateLimitMiddleware(self._config.rate_limit))
 
         return middleware
@@ -381,8 +378,7 @@ class Flashlite:
                 # Check if model supports JSON mode
                 model_lower = resolved_model.lower()
                 if any(
-                    p in model_lower
-                    for p in ["gpt-4", "gpt-3.5", "claude", "gemini", "mistral"]
+                    p in model_lower for p in ["gpt-4", "gpt-3.5", "claude", "gemini", "mistral"]
                 ):
                     kwargs["response_format"] = {"type": "json_object"}
 
@@ -430,9 +426,7 @@ class Flashlite:
                 return validate_response(response, response_model)
             except StructuredOutputError as e:
                 last_error = e
-                logger.warning(
-                    f"Structured output validation failed (attempt {attempt + 1}): {e}"
-                )
+                logger.warning(f"Structured output validation failed (attempt {attempt + 1}): {e}")
 
                 # If we have retries left, ask the model to fix it
                 if attempt < structured_retries:
