@@ -1,12 +1,12 @@
 [project]
 name = "flashlite"
-version = "0.2.3"
+version = "0.2.4"
 description = "Batteries-included wrapper for litellm with rate limiting, retries, templating, and more"
 readme = "README.md"
 authors = [
     { name = "ndalton12", email = "niall.dalton12@gmail.com" }
 ]
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
     "litellm>=1.55.0",
     "pydantic>=2.0",
